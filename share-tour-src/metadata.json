@@ -1,0 +1,6 @@
+{
+  "name": "Smart Journey Booking System",
+  "description": "A booking, batches, and quotas management portal for customers and administrators of Smart Journey travel agency.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

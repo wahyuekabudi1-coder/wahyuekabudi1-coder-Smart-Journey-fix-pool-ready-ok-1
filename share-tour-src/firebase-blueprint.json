@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "Trip": {
+      "title": "Trip Catalog Item",
+      "description": "Details of a specific travel package with itinerary and pricing overview",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique trip package UUID" },
+        "title": { "type": "string", "description": "Human readable name of the package" },
+        "slug": { "type": "string", "description": "URL slug representation" },
+        "location": { "type": "string", "description": "Geographical region or city target" },
+        "duration": { "type": "string", "description": "A descriptive duration string like 3 Days 2 Nights" },
+        "description": { "type": "string", "description": "Detailed text overview" },
+        "coverImage": { "type": "string", "description": "Image URL of the trip banner" },
+        "included": { "type": "array", "description": "List of inclusions" },
+        "excluded": { "type": "array", "description": "List of exclusions" },
+        "itinerary": { "type": "array", "description": "Chronological list of itinerary day activities" },
+        "startingPrice": { "type": "number", "description": "The lowest starting price tier" }
+      },
+      "required": ["id", "title", "slug", "location", "duration", "startingPrice"]
+    },
+    "Batch": {
+      "title": "Departure Batch Calendar",
+      "description": "A scheduled departure date linked to a trip with associated seat quotas, seat availability, and specific batch pricing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique departure batch UUID" },
+        "tripId": { "type": "string", "description": "Target reference ID for the trip entity" },
+        "departureDate": { "type": "string", "description": "Date format YYYY-MM-DD" },
+        "quota": { "type": "number", "description": "Total original maximum seats configured" },
+        "availableSeats": { "type": "number", "description": "Remaining seat spaces left for reservation" },
+        "price": { "type": "number", "description": "Rupiah price per customer for this schedule" },
+        "status": { "type": "string", "enum": ["Open", "Closed"], "description": "Status indicating if sales are open or closed" }
+      },
+      "required": ["id", "tripId", "departureDate", "quota", "availableSeats", "price", "status"]
+    },
+    "Booking": {
+      "title": "Traveler Registration Booking",
+      "description": "Customer reservation files, transaction receipt references, audit states, and contact coordinates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique booking registration UUID" },
+        "bookingCode": { "type": "string", "description": "High visibility verification serial number like SJ-XXXXX" },
+        "tripId": { "type": "string", "description": "Underlying trip package ID reference" },
+        "tripTitle": { "type": "string", "description": "Snapshot of trip title at the moment of booking" },
+        "batchId": { "type": "string", "description": "Linked calendar batch element code" },
+        "departureDate": { "type": "string", "description": "Target departure date calendar snapshot" },
+        "fullName": { "type": "string", "description": "Main registration primary traveler name" },
+        "email": { "type": "string", "description": "Traveler transaction and updates email address" },
+        "phone": { "type": "string", "description": "Main traveler active mobile phone digits" },
+        "participantsCount": { "type": "number", "description": "Count of total passengers" },
+        "participantsNames": { "type": "array", "description": "Passenger lists names array" },
+        "proofOfPayment": { "type": "string", "description": "Base64 string or CDN URL of payment transfer slip" },
+        "status": { "type": "string", "enum": ["Pending", "Confirmed", "Rejected"], "description": "Internal status of receipt audit verification" },
+        "rejectReason": { "type": "string", "description": "Failure audit notes published to the traveler on status checks" },
+        "totalPrice": { "type": "number", "description": "Calculation of total price billed to the developer" },
+        "createdAt": { "type": "string", "description": "ISO timestamp for database sort order" }
+      },
+      "required": [
+        "id",
+        "bookingCode",
+        "tripId",
+        "tripTitle",
+        "batchId",
+        "departureDate",
+        "fullName",
+        "email",
+        "phone",
+        "participantsCount",
+        "participantsNames",
+        "proofOfPayment",
+        "status",
+        "totalPrice",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/trips/{tripId}": {
+      "schema": "Trip",
+      "description": "Travel packages directory collection"
+    },
+    "/batches/{batchId}": {
+      "schema": "Batch",
+      "description": "Available departures batch schedules"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Customer reservations and audit ledger"
+    }
+  }
+}

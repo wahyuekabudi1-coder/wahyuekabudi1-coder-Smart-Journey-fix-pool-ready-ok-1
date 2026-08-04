@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global safety net: Universal default-deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE SECURITY PRIMITIVES ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Bootstrapped Admin verification using the runtime email from environment
+    function isAdmin() {
+      return isEmailVerified() && (
+        request.auth.token.email == "sawahjayagroup@gmail.com" ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- COLLECTION VALIDATION SCHEMAS ---
+
+    function isValidTrip(data) {
+      return data.keys().hasAll(['id', 'title', 'slug', 'location', 'duration', 'description', 'coverImage', 'included', 'excluded', 'itinerary', 'startingPrice'])
+        && data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 200
+        && data.slug is string && data.slug.size() <= 100
+        && data.location is string && data.location.size() <= 250
+        && data.duration is string && data.duration.size() <= 100
+        && data.description is string && data.description.size() <= 2000
+        && data.coverImage is string && data.coverImage.size() <= 1000
+        && data.included is list && data.included.size() <= 50
+        && data.excluded is list && data.excluded.size() <= 50
+        && data.itinerary is list && data.itinerary.size() <= 30
+        && data.startingPrice is int && data.startingPrice >= 0;
+    }
+
+    function isValidBatch(data) {
+      return data.keys().hasAll(['id', 'tripId', 'departureDate', 'quota', 'availableSeats', 'price', 'status'])
+        && data.id is string && data.id.size() <= 128
+        && data.tripId is string && data.tripId.size() <= 128
+        && data.departureDate is string && data.departureDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.quota is int && data.quota >= 1 && data.quota <= 1000
+        && data.availableSeats is int && data.availableSeats >= 0 && data.availableSeats <= data.quota
+        && data.price is int && data.price >= 0
+        && (data.status == 'Open' || data.status == 'Closed');
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll(['id', 'bookingCode', 'tripId', 'tripTitle', 'batchId', 'departureDate', 'fullName', 'email', 'phone', 'participantsCount', 'participantsNames', 'proofOfPayment', 'status', 'totalPrice', 'createdAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.bookingCode is string && data.bookingCode.size() <= 20
+        && data.tripId is string && data.tripId.size() <= 128
+        && data.tripTitle is string && data.tripTitle.size() <= 200
+        && data.batchId is string && data.batchId.size() <= 128
+        && data.departureDate is string && data.departureDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 100
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 150
+        && data.phone is string && data.phone.size() >= 8 && data.phone.size() <= 30
+        && data.participantsCount is int && data.participantsCount >= 1 && data.participantsCount <= 100
+        && data.participantsNames is list && data.participantsNames.size() == data.participantsCount
+        && data.proofOfPayment is string && data.proofOfPayment.size() >= 10
+        && (data.status == 'Pending' || data.status == 'Confirmed' || data.status == 'Rejected')
+        && data.totalPrice is int && data.totalPrice >= 0;
+    }
+
+    // --- COLLECTION RULE MATCHES ---
+
+    // Trips (Catalog Packages)
+    match /trips/{tripId} {
+      allow get, list: if true; // Public catalogs readable by anyone
+      allow create: if isAdmin() && isValidId(tripId) && isValidTrip(incoming());
+      allow update: if isAdmin() && isValidTrip(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Batches (Calendar Departures & Quotas)
+    match /batches/{batchId} {
+      allow get, list: if true; // Public schedules searchable for bookings
+      allow create: if isAdmin() && isValidId(batchId) && isValidBatch(incoming());
+      allow update: if (isAdmin() && isValidBatch(incoming())) || (
+        // Allow a normal user to decrement seats during booking submission
+        isValidBatch(incoming()) && 
+        incoming().diff(existing()).affectedKeys().hasOnly(['availableSeats', 'status']) && 
+        incoming().availableSeats < existing().availableSeats
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Bookings (Customer Orders & Audit Slips)
+    match /bookings/{bookingId} {
+      // Secure list query isolation: a visitor can read their own bookings containing email & matching search parameters
+      allow list: if isAdmin() || (
+        isSignedIn() && resource.data.email == request.auth.token.email
+      );
+      
+      allow get: if isAdmin() || (
+        // Guests can get their active status details via public tracker if code exists
+        existing().bookingCode != null
+      );
+
+      // Anyone can file a booking provided it starts as Pending and is fully valid
+      allow create: if isValidId(bookingId) 
+        && isValidBooking(incoming()) 
+        && incoming().status == "Pending";
+
+      // Re-verifications are administrator exclusive.
+      // Normal guest clients must not alter confirmed records.
+      allow update: if isAdmin() && isValidBooking(incoming());
+      
+      allow delete: if isAdmin();
+    }
+
+    // Admins metadata document collection
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
